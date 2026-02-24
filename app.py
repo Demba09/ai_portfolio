@@ -671,10 +671,10 @@ with tab1:
         st.markdown("### Questions de démo")
         if st.button("Comment est structurée la réponse à l'appel d'offres ?"):
             st.session_state["p1_question"] = "Comment est structurée la réponse à l'appel d'offres ? (ex: lots, étapes, critères)"
-        if st.button("Quelle est la date limite de soumission et les étapes clés du calendrier ?"):
-            st.session_state["p1_question"] = "Quelle est la date limite de soumission et les étapes clés du calendrier ?"
-        if st.button("Quelles sont les exigences spécifiques en matière de data science / IA ?"):
-            st.session_state["p1_question"] = "Quelles sont les exigences spécifiques en matière de data science / IA mentionnées dans l'appel d'offres ?"
+        if st.button("Qui a lancé l'appel d'offres ?"):
+            st.session_state["p1_question"] = "Qui a lancé l'appel d'offres"
+        if st.button("Qu'est ce qui est demandé dans l'appel d'offres ?"):
+            st.session_state["p1_question"] = "Qu'est ce que que l'organisme acheteur attend des prestataires ?"
 
     with colB:
         st.markdown("### Question")
