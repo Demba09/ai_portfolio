@@ -68,7 +68,18 @@ def triage_email_llm(subject: str, body: str) -> TicketTriage:
     )
 
     raw = resp.choices[0].message.content.strip()
-    data = json.loads(raw)
+    
+    # Robust JSON extraction (handle extra text before/after JSON)
+    import re
+    json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+    if json_match:
+        raw = json_match.group(0)
+    
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Failed to parse LLM response as JSON: {raw[:200]}... Error: {e}")
+    
     return TicketTriage(**data)
 
 load_dotenv()
@@ -137,6 +148,9 @@ def chunk_pages(pages: list[dict], chunk_size: int = 1200, overlap: int = 200) -
 
 def embed_texts(texts: list[str]) -> np.ndarray:
     """Embeddings matrix shape (n, d) float32 normalized."""
+    if client is None:
+        raise RuntimeError("OpenAI client not initialized. Set OPENAI_API_KEY.")
+    
     resp = client.embeddings.create(
         model="text-embedding-3-small",
         input=texts,
@@ -555,30 +569,8 @@ def run_spec(data: pd.DataFrame, spec: dict) -> Tuple:
         else:
             grouped_data = working_data.groupby(groupby)[column].sum().reset_index()
         
-        # Create chart based on type
-        if chart_type == "bar":
-            fig = px.bar(
-                grouped_data,
-                x=groupby,
-                y=column,
-                title=f"{agg.upper()} de {column} par {groupby}",
-                color=column,
-                color_continuous_scale="Blues",
-                height=500,
-                labels={column: f"{column} ({agg})", groupby: groupby}
-            )
-        elif chart_type == "line":
-            fig = px.line(
-                grouped_data,
-                x=groupby,
-                y=column,
-                title=f"{agg.upper()} de {column} par {groupby}",
-                markers=True,
-                height=500,
-                labels={column: f"{column} ({agg})", groupby: groupby}
-            )
-        # Créer le graphique en fonction du type et du nombre de groupes
-        # Note: Pie charts ne sont lisibles que avec peu de groupes (<7)
+        # Create chart based on type and number of groups
+        # Note: Pie charts sont lisibles seulement avec peu de groupes (<7)
         num_groups = len(grouped_data)
         
         if chart_type == "pie" and num_groups <= 6:
