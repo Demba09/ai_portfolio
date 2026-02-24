@@ -232,63 +232,84 @@ def load_superstore_xls(path: Path) -> pd.DataFrame:
 # ---------- Tab 3 Data Loading & LLM Utils ----------
 # Load Superstore data for Tab 3
 superstore_path = DATA_DIR / "superstore.xlsx"
+superstore_orders_csv = DATA_DIR / "superstore_orders.csv"
+superstore_returns_csv = DATA_DIR / "superstore_returns.csv"
 
 @st.cache_resource
 def load_superstore_data():
-    """Load superstore data, télécharger depuis GitHub si local n'existe pas."""
+    """Load superstore data from CSV/Excel/GitHub."""
     import requests
     import io
     
     df = None
     
-    # Essai 1: charger depuis le fichier local
+    # Essai 1: charger depuis CSV local (plus rapide et plus léger)
+    if superstore_orders_csv.exists():
+        try:
+            df = pd.read_csv(superstore_orders_csv)
+            df["Order Date"] = pd.to_datetime(df["Order Date"])
+            df["Ship Date"] = pd.to_datetime(df["Ship Date"])
+            print(f"[DEBUG] Loaded Orders from CSV: {df.shape[0]} rows")
+            
+            # Load returns
+            if superstore_returns_csv.exists():
+                returns_df = pd.read_csv(superstore_returns_csv)
+                returned_order_ids = set(returns_df["Order ID"].unique())
+                df["Returned"] = df["Order ID"].isin(returned_order_ids).astype(int)
+                print(f"[DEBUG] Loaded {len(returned_order_ids)} returns from CSV")
+            else:
+                df["Returned"] = 0
+            
+            return df
+        except Exception as e:
+            print(f"[DEBUG] Error loading CSV: {e}")
+    
+    # Essai 2: charger depuis le fichier Excel local
     if superstore_path.exists():
         try:
             df = load_superstore_xls(superstore_path)
-            print(f"[DEBUG] Loaded from local: {superstore_path}")
+            print(f"[DEBUG] Loaded from local Excel: {superstore_path}")
+            
+            # Load returns sheet
+            try:
+                returns_df = pd.read_excel(superstore_path, sheet_name="Returns")
+                returns_df.columns = [c.strip() for c in returns_df.columns]
+                returned_order_ids = set(returns_df["Order ID"].unique())
+                df["Returned"] = df["Order ID"].isin(returned_order_ids).astype(int)
+                print(f"[DEBUG] Loaded {len(returned_order_ids)} returns from Excel")
+            except Exception as e:
+                print(f"[DEBUG] Could not load Returns sheet: {e}")
+                df["Returned"] = 0
+            
             return df
         except Exception as e:
-            print(f"[DEBUG] Error loading local {superstore_path}: {e}")
+            print(f"[DEBUG] Error loading Excel: {e}")
     
-    # Essai 2: télécharger depuis GitHub avec requests
+    # Essai 3: télécharger depuis GitHub (raw CSV)
     print(f"[DEBUG] Tentative de téléchargement depuis GitHub...")
     try:
-        url = "https://raw.githubusercontent.com/Demba09/ai_portfolio/main/data/superstore.xlsx"
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
+        orders_url = "https://raw.githubusercontent.com/Demba09/ai_portfolio/main/data/superstore_orders.csv"
+        returns_url = "https://raw.githubusercontent.com/Demba09/ai_portfolio/main/data/superstore_returns.csv"
         
-        excel_file = io.BytesIO(response.content)
-        xls = pd.ExcelFile(excel_file)
+        df = pd.read_csv(orders_url)
+        df["Order Date"] = pd.to_datetime(df["Order Date"])
+        df["Ship Date"] = pd.to_datetime(df["Ship Date"])
+        print(f"[DEBUG] Loaded Orders from GitHub CSV: {df.shape[0]} rows")
         
-        if "Orders" not in xls.sheet_names:
-            raise ValueError(f"Sheet 'Orders' not found. Available: {xls.sheet_names}")
-        
-        df = pd.read_excel(excel_file, sheet_name="Orders")
-        df.columns = [c.strip() for c in df.columns]
-        if "Order Date" in df.columns:
-            df["Order Date"] = pd.to_datetime(df["Order Date"])
-        
-        print(f"[DEBUG] Loaded from GitHub (Orders): {df.shape[0]} rows")
-        
-        # Load returns sheet
+        # Load returns
         try:
-            excel_file.seek(0)
-            returns_df = pd.read_excel(excel_file, sheet_name="Returns")
-            returns_df.columns = [c.strip() for c in returns_df.columns]
+            returns_df = pd.read_csv(returns_url)
             returned_order_ids = set(returns_df["Order ID"].unique())
             df["Returned"] = df["Order ID"].isin(returned_order_ids).astype(int)
-            print(f"[DEBUG] Loaded {len(returned_order_ids)} returns from GitHub")
+            print(f"[DEBUG] Loaded {len(returned_order_ids)} returns from GitHub CSV")
         except Exception as e:
-            print(f"[DEBUG] Could not load Returns sheet: {e}")
+            print(f"[DEBUG] Could not load Returns from GitHub: {e}")
             df["Returned"] = 0
         
         return df
     except Exception as e:
         print(f"[DEBUG] Error loading from GitHub: {e}")
-    
-    # Essai 3: renvoyer None si les données ne sont pas disponibles
-    print(f"[DEBUG] Impossible de charger les données Superstore")
-    return None
+        return None
 
 df = load_superstore_data()
 
