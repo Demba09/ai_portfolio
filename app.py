@@ -408,10 +408,11 @@ def llm_to_spec_fr(question: str) -> dict:
         else:
             spec["groupby"] = "Region"  # Default
         
-        # ===== CHART TYPE DETECTION =====
-        bar_keywords = ["barre", "bar", "colonne", "column", "histogram", "histogramme", "diagramme en barres"]
-        line_keywords = ["ligne", "line", "courbe", "curve", "graphique linéaire", "line chart", "évolution", "evolution", "progression"]
-        pie_keywords = ["camembert", "pie", "secteurs", "sectors", "distribution", "parts", "pourcentages", "percentage", "parts", "portion"]
+        # ===== CHART TYPE DETECTION (IMPROVED LOGIC) =====
+        # Vérifier d'abord les mots-clés explicites du graphique
+        bar_keywords = ["barre", "bar", "colonne", "column", "histogram", "histogramme", "diagramme en barres", "comparaison"]
+        line_keywords = ["ligne", "line", "courbe", "curve", "graphique linéaire", "line chart"]
+        pie_keywords = ["camembert", "pie", "secteurs", "sectors", "pourcentages", "percentage", "parts", "portion", "distribution"]
         
         if any(kw in question_lower for kw in pie_keywords):
             spec["chart_type"] = "pie"
@@ -420,7 +421,12 @@ def llm_to_spec_fr(question: str) -> dict:
         elif any(kw in question_lower for kw in bar_keywords):
             spec["chart_type"] = "bar"
         else:
-            spec["chart_type"] = "bar"  # Default
+            # Logique automatique: choisir le type en fonction du contexte
+            # Distribution/parts -> pie, Comparaison -> bar
+            if any(kw in question_lower for kw in ["distribution", "répartition", "parts", "portion", "pourcentage"]):
+                spec["chart_type"] = "pie"
+            else:
+                spec["chart_type"] = "bar"  # Default pour comparaisons
     
     # ===== METRIC DETECTION (APPLIES TO BOTH TIMESERIES AND NON-TIMESERIES) =====
     if not is_return_rate:
@@ -571,7 +577,11 @@ def run_spec(data: pd.DataFrame, spec: dict) -> Tuple:
                 height=500,
                 labels={column: f"{column} ({agg})", groupby: groupby}
             )
-        elif chart_type == "pie":
+        # Créer le graphique en fonction du type et du nombre de groupes
+        # Note: Pie charts ne sont lisibles que avec peu de groupes (<7)
+        num_groups = len(grouped_data)
+        
+        if chart_type == "pie" and num_groups <= 6:
             fig = px.pie(
                 grouped_data,
                 names=groupby,
@@ -579,13 +589,27 @@ def run_spec(data: pd.DataFrame, spec: dict) -> Tuple:
                 title=f"Distribution de {column} par {groupby}",
                 height=500
             )
+        elif chart_type == "line":
+            fig = px.line(
+                grouped_data,
+                x=groupby,
+                y=column,
+                title=f"{agg.upper()} de {column} par {groupby}",
+                markers=True,
+                height=500,
+                labels={column: f"{column} ({agg})", groupby: groupby}
+            )
         else:
+            # Bar chart (par défaut ou si pie chart a trop d'items)
             fig = px.bar(
                 grouped_data,
                 x=groupby,
                 y=column,
                 title=f"{agg.upper()} de {column} par {groupby}",
-                height=500
+                color=column,
+                color_continuous_scale="Blues",
+                height=500,
+                labels={column: f"{column} ({agg})", groupby: groupby}
             )
         
         # Generate insight
