@@ -286,51 +286,9 @@ def load_superstore_data():
     except Exception as e:
         print(f"[DEBUG] Error loading from GitHub: {e}")
     
-    # Essai 3: créer dataset de démonstration synthétique en fallback
-    print(f"[DEBUG] Création d'un dataset synthétique de démonstration...")
-    try:
-        import numpy as np
-        from datetime import datetime, timedelta
-        
-        # Générer données synthétiques Superstore
-        np.random.seed(42)
-        n_rows = 9994
-        
-        regions = ["East", "West", "South", "Central"]
-        categories = ["Furniture", "Technology", "Office Supplies"]
-        segments = ["Consumer", "Corporate", "Home Office"]
-        states = ["CA", "TX", "NY", "FL", "IL", "PA", "OH", "GA", "NC", "MI"]
-        ship_modes = ["Same Day", "First Class", "Second Class", "Standard Class"]
-        
-        df = pd.DataFrame({
-            "Order ID": [f"CA-{i:05d}" for i in range(1, n_rows+1)],
-            "Order Date": [datetime(2014, 1, 1) + timedelta(days=int(x)) for x in np.linspace(0, 2000, n_rows)],
-            "Ship Date": [datetime(2014, 1, 1) + timedelta(days=int(x), hours=5) for x in np.linspace(0, 2000, n_rows)],
-            "Ship Mode": np.random.choice(ship_modes, n_rows),
-            "Customer ID": [f"CUST-{i%1000:04d}" for i in range(n_rows)],
-            "Customer Name": [f"Customer {i}" for i in range(n_rows)],
-            "Segment": np.random.choice(segments, n_rows),
-            "Country": ["United States"] * n_rows,
-            "City": np.random.choice(["New York", "Los Angeles", "Chicago", "Houston", "Phoenix"], n_rows),
-            "State": np.random.choice(states, n_rows),
-            "Postal Code": np.random.randint(10000, 99999, n_rows),
-            "Region": np.random.choice(regions, n_rows),
-            "Product ID": [f"PROD-{i%500:03d}" for i in range(n_rows)],
-            "Category": np.random.choice(categories, n_rows),
-            "Sub-Category": np.random.choice(["Chairs", "Desks", "Phones", "Copiers", "Paper", "Binders"], n_rows),
-            "Product Name": [f"Product {i%100}" for i in range(n_rows)],
-            "Sales": np.random.uniform(10, 2000, n_rows),
-            "Quantity": np.random.randint(1, 14, n_rows),
-            "Discount": np.random.choice([0, 0.1, 0.2, 0.3], n_rows),
-            "Profit": np.random.uniform(-500, 1000, n_rows),
-            "Returned": np.random.choice([0, 1], n_rows, p=[0.96, 0.04])
-        })
-        
-        print(f"[DEBUG] Dataset synthétique créé: {df.shape[0]} rows")
-        return df
-    except Exception as e:
-        print(f"[DEBUG] Error creating synthetic data: {e}")
-        return None
+    # Essai 3: renvoyer None si les données ne sont pas disponibles
+    print(f"[DEBUG] Impossible de charger les données Superstore")
+    return None
 
 df = load_superstore_data()
 
@@ -841,6 +799,12 @@ with tab2:
 # ---------- Tab 3 ----------
 with tab3:
     st.markdown("### 📊 Analyseur de Données Superstore")
+    
+    # Vérifier que les données sont disponibles
+    if df is None:
+        st.error("❌ Données Superstore non disponibles")
+        st.info("Pour utiliser cette tab, place le fichier `superstore.xlsx` dans le dossier `data/` de ton projet.")
+        st.stop()
     
     st.markdown("#### ✍️ Posez votre question")
     
