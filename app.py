@@ -1,146 +1,31 @@
 import json
 from pathlib import Path
-
 import pandas as pd
 import streamlit as st
-
 import io
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import timedelta
+from typing import Tuple
+
 try:
     import faiss
     FAISS_AVAILABLE = True
 except Exception:
     faiss = None
     FAISS_AVAILABLE = False
+
 from pypdf import PdfReader
 from openai import OpenAI
-
 from dotenv import load_dotenv
 import os
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
-import matplotlib.pyplot as plt
 
-# ---------- P3: NL -> Spec contrôlée -> Graph ----------
-Metric = Literal["Sales", "Profit", "Quantity"]
-Dimension = Literal["Region", "Category", "Sub-Category", "Segment", "Ship Mode", "State", "City"]
-ChartType = Literal["bar", "line"]
-TimeRange = Literal["all", "last_month", "last_30_days"]
 
-class QuerySpec(BaseModel):
-    metric: Metric = Field(..., description="Mesure à analyser")
-    dimension: Optional[Dimension] = Field(None, description="Dimension pour grouper (None si série temporelle)")
-    chart: ChartType = Field(..., description="Type de graphique")
-    time_range: TimeRange = Field("all", description="Filtre temporel")
-    top_k: int = Field(10, ge=3, le=30, description="Nombre max de catégories affichées si bar chart")
 
-def llm_to_spec_fr(question: str) -> QuerySpec:
-    if client is None:
-        raise RuntimeError("OPENAI_API_KEY manquante")
 
-    # Règles simples + modèle pour produire une spec JSON
-    instructions = (
-        "Tu convertis une question business en une spec JSON stricte pour analyser le dataset Superstore.\n"
-        "Règles:\n"
-        "- Réponds UNIQUEMENT avec un JSON valide (sans texte autour).\n"
-        "- metric ∈ {Sales, Profit, Quantity}\n"
-        "- dimension ∈ {Region, Category, Sub-Category, Segment, Ship Mode, State, City} ou null\n"
-        "- chart ∈ {bar, line}\n"
-        "- time_range ∈ {all, last_month, last_30_days}\n"
-        "- top_k: entier 3..30 (par défaut 10)\n"
-        "Heuristiques:\n"
-        "- 'revenu', 'ventes', 'chiffre' => Sales\n"
-        "- 'profit', 'marge' => Profit\n"
-        "- 'quantité', 'volume' => Quantity\n"
-        "- 'évolution', 'tendance', 'jour', 'date' => chart=line et dimension=null\n"
-        "- 'par région' => dimension=Region, 'par catégorie' => Category, 'par sous-catégorie' => Sub-Category, "
-        "'par segment' => Segment, 'par mode de livraison' => Ship Mode, 'par état' => State, 'par ville' => City\n"
-        "- 'mois dernier' => time_range=last_month\n"
-        "- '30 derniers jours' => time_range=last_30_days\n"
-        "- Si rien n'est précisé: bar + dimension=Category (et metric=Sales)\n"
-    )
-
-    resp = client.responses.create(
-        model="gpt-5.2",
-        instructions=instructions,
-        input=question
-    )
-
-    # parse JSON -> pydantic
-    import json as _json
-    raw = resp.output_text.strip()
-    data = _json.loads(raw)
-    return QuerySpec(**data)
-
-def apply_time_filter(df: pd.DataFrame, time_range: TimeRange) -> pd.DataFrame:
-    if "Order Date" not in df.columns:
-        return df
-
-    d = df.copy()
-    d["Order Date"] = pd.to_datetime(d["Order Date"], errors="coerce")
-    d = d.dropna(subset=["Order Date"])
-
-    if time_range == "all":
-        return d
-
-    max_date = d["Order Date"].max()
-
-    if time_range == "last_30_days":
-        start = max_date - pd.Timedelta(days=30)
-        return d[d["Order Date"] >= start]
-
-    if time_range == "last_month":
-        # mois calendaire précédent par rapport à max_date présent dans le fichier
-        first_of_current = max_date.replace(day=1)
-        last_of_prev = first_of_current - pd.Timedelta(days=1)
-        first_of_prev = last_of_prev.replace(day=1)
-        return d[(d["Order Date"] >= first_of_prev) & (d["Order Date"] <= last_of_prev)]
-
-    return d
-
-def run_spec(df: pd.DataFrame, spec: QuerySpec):
-    d = apply_time_filter(df, spec.time_range)
-
-    if spec.chart == "line":
-        # Série temporelle : sales/profit/quantity par jour
-        if "Order Date" not in d.columns:
-            raise ValueError("Colonne 'Order Date' absente, impossible de faire une courbe temporelle.")
-        ts = (
-            d.groupby(d["Order Date"].dt.date)[spec.metric]
-            .sum()
-            .sort_index()
-        )
-        fig = plt.figure()
-        plt.plot(ts.index, ts.values)
-        plt.xticks(rotation=45, ha="right")
-        plt.title(f"{spec.metric} — évolution temporelle")
-        plt.tight_layout()
-
-        insight = f"Sur la période, le pic de {spec.metric} est atteint le {ts.idxmax()}."
-        return fig, insight
-
-    # bar chart : groupby dimension
-    if spec.dimension is None:
-        # fallback sûr
-        spec.dimension = "Category"
-
-    grp = d.groupby(spec.dimension)[spec.metric].sum().sort_values(ascending=False)
-    grp = grp.head(spec.top_k)
-
-    fig = plt.figure()
-    plt.bar(grp.index.astype(str), grp.values)
-    plt.xticks(rotation=45, ha="right")
-    plt.title(f"{spec.metric} par {spec.dimension} (Top {len(grp)})")
-    plt.tight_layout()
-
-    top_name = str(grp.index[0]) if len(grp) else ""
-    top_val = float(grp.iloc[0]) if len(grp) else 0.0
-    insight = f"Le top {spec.dimension} est **{top_name}** avec {top_val:,.0f} de {spec.metric}."
-    return fig, insight
-
-from pydantic import BaseModel, Field
-from typing import Literal
-import json as _json
 
 Sentiment = Literal["Très en colère", "En colère", "Neutre", "Satisfait"]
 Categorie = Literal["Matériel", "Logiciel", "Accès / Identité", "Réseau", "Sécurité", "Demande de service", "Autre"]
@@ -158,14 +43,14 @@ def triage_email_llm(subject: str, body: str) -> TicketTriage:
     instructions = (
         "Tu es un assistant de triage pour support IT N1.\n"
         "Tu dois produire UNIQUEMENT un JSON valide (sans texte autour) respectant exactement ce schéma:\n"
-        "{"
-        "\"sentiment\": \"Très en colère|En colère|Neutre|Satisfait\", "
-        "\"urgence\": 1..5, "
-        "\"categorie\": \"Matériel|Logiciel|Accès / Identité|Réseau|Sécurité|Demande de service|Autre\", "
-        "\"action_immediate\": \"...\""
-        "}\n\n"
+        "{\"sentiment\": \"Très en colère|En colère|Neutre|Satisfait\", \"urgence\": 1..5, \"categorie\": \"Matériel|Logiciel|Accès / Identité|Réseau|Sécurité|Demande de service|Autre\", \"action_immediate\": \"...\"}\n\n"
+        "RÈGLES SENTIMENT (TRÈS IMPORTANT):\n"
+        "- 'Très en colère': mots forts (catastrophe, inacceptable, arnaque, furieux), exclamations (!!!), menaces, insultes\n"
+        "- 'En colère': frustration visible (déçu, énervé, problème récurrent, très urgent), ton agressif, exclamation (!)\n"
+        "- 'Neutre': simple demande, constat factuel, pas d'émotion marquée (création compte, info, question simple)\n"
+        "- 'Satisfait': remerciements, compliments, ton positif, merci\n\n"
         "Règles urgence:\n"
-        "- 5 : prod down, sécurité critique (phishing/malware), VIP en réunion immédiate, 'urgent', 'dans 10 minutes'\n"
+        "- 5 : prod down, sécurité critique (phishing/malware), VIP, 'urgent', 'immédiat', 'dans 10 minutes'\n"
         "- 4 : blocage fort utilisateur, impact multi-personnes, VPN/SSO bloquant\n"
         "- 3 : blocage utilisateur standard sans deadline immédiate\n"
         "- 2 : gêne / contournement possible\n"
@@ -174,14 +59,16 @@ def triage_email_llm(subject: str, body: str) -> TicketTriage:
         "Ne mets pas de données personnelles dans la réponse."
     )
 
-    resp = client.responses.create(
-        model="gpt-5.2",
-        instructions=instructions,
-        input=f"OBJET:\n{subject}\n\nEMAIL:\n{body}"
+    resp = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": instructions},
+            {"role": "user", "content": f"OBJET:\n{subject}\n\nEMAIL:\n{body}"}
+        ]
     )
 
-    raw = resp.output_text.strip()
-    data = _json.loads(raw)
+    raw = resp.choices[0].message.content.strip()
+    data = json.loads(raw)
     return TicketTriage(**data)
 
 load_dotenv()
@@ -194,8 +81,10 @@ if _OPENAI_KEY:
         client = None
 else:
     client = None
- 
-DATA_DIR = Path("data")
+
+# Définir le répertoire data en chemin absolu (pour Streamlit Cloud et déploiements)
+SCRIPT_DIR = Path(__file__).parent.resolve()
+DATA_DIR = SCRIPT_DIR / "data"
 
 # ---------- RAG utils (PDF -> chunks -> FAISS -> LLM) ----------
 
@@ -257,7 +146,7 @@ def embed_texts(texts: list[str]) -> np.ndarray:
     norms = np.linalg.norm(vectors, axis=1, keepdims=True) + 1e-12
     return vectors / norms
 
-def build_faiss_index(chunks: list[dict]) -> tuple[faiss.IndexFlatIP, list[dict]]:
+def build_faiss_index(chunks: list[dict]) -> Tuple["faiss.IndexFlatIP", list[dict]]:
     vecs = embed_texts([c["text"] for c in chunks])
     dim = vecs.shape[1]
     index = faiss.IndexFlatIP(dim)
@@ -281,7 +170,7 @@ def retrieve(index: faiss.IndexFlatIP, chunks: list[dict], question: str, top_k:
         })
     return results
 
-def answer_with_citations(question: str, retrieved: list[dict]) -> tuple[str, list[dict]]:
+def answer_with_citations(question: str, retrieved: list[dict]) -> Tuple[str, list[dict]]:
     context_blocks = []
     for r in retrieved:
         context_blocks.append(
@@ -299,12 +188,14 @@ def answer_with_citations(question: str, retrieved: list[dict]) -> tuple[str, li
         "en utilisant les IDs des extraits."
     )
 
-    resp = client.responses.create(
-        model="gpt-5.2",
-        instructions=instructions,
-        input=f"QUESTION:\n{question}\n\nEXTRAITS:\n{context}",
+    resp = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": instructions},
+            {"role": "user", "content": f"QUESTION:\n{question}\n\nEXTRAITS:\n{context}"}
+        ]
     )
-    return resp.output_text, retrieved
+    return resp.choices[0].message.content, retrieved
 
 # ---------- Utils ----------
 @st.cache_data
@@ -340,14 +231,9 @@ def load_superstore_xls(path: Path) -> pd.DataFrame:
 
 # ---------- Tab 3 Data Loading & LLM Utils ----------
 # Load Superstore data for Tab 3
-superstore_path = None
-for ext in ["superstore.xlsx", "superstore.xls"]:
-    candidate = DATA_DIR / ext
-    if candidate.exists():
-        superstore_path = candidate
-        break
+superstore_path = DATA_DIR / "superstore.xlsx"
 
-if superstore_path:
+if superstore_path.exists():
     try:
         df = load_superstore_xls(superstore_path)
         # Load returns data and merge with orders
@@ -392,8 +278,8 @@ def llm_to_spec_fr(question: str) -> dict:
     
     if is_return_rate:
         spec["is_return_rate"] = True
-        spec["column"] = "Returned"
-        spec["agg"] = "mean"  # Calculate return rate as mean (0 or 1)
+        # Pour le taux de retour, on utilise une aggregation spéciale (calcul du %) plutôt que une colonne
+        spec["agg"] = "mean"  # Mean of 0/1 values = return rate percentage
         spec["chart_type"] = "bar"
     
     # ===== TEMPORAL QUERIES (TIMESERIES) =====
@@ -511,12 +397,8 @@ def llm_to_spec_fr(question: str) -> dict:
     
     return spec
 
-def run_spec(data: pd.DataFrame, spec: dict) -> tuple:
+def run_spec(data: pd.DataFrame, spec: dict) -> Tuple:
     """Execute spec and return (figure, insight text) using Plotly for beautiful interactive charts."""
-    import plotly.express as px
-    import plotly.graph_objects as go
-    from datetime import timedelta
-    
     if data is None:
         raise ValueError("No data available")
     
@@ -675,7 +557,7 @@ tab1, tab2, tab3 = st.tabs([
 # ---------- Tab 1 ----------
 with tab1:
     st.subheader("Assistant Appels d'Offres (PDF)")
-    st.caption("Démo : PDF INCa (BOAMP) ou import d'un PDF → Q/R factuelle + citations.")
+    st.caption("Démo : PDF d'un appel d'offres ou import d'un PDF → Q/R factuelle + citations.")
 
     pdf_path = DATA_DIR / "inca_boamp.pdf"
 
@@ -704,7 +586,7 @@ with tab1:
         pdf_file = None
         if use_demo:
             if pdf_path.exists():
-                st.success("Mode démo activé (PDF INCa).")
+                st.success("Mode démo activé (Appel d'offre gestion de données).")
             else:
                 st.warning("PDF de démo introuvable : place `inca_boamp.pdf` dans `data/`.")
         else:
@@ -716,8 +598,8 @@ with tab1:
             st.session_state["p1_question"] = "Comment est structurée la réponse à l'appel d'offres ? (ex: lots, étapes, critères)"
         if st.button("Quelle est la date limite de soumission et les étapes clés du calendrier ?"):
             st.session_state["p1_question"] = "Quelle est la date limite de soumission et les étapes clés du calendrier ?"
-        if st.button("Ou sont les exigences spécifiques en matière de data science / IA ?"):
-            st.session_state["p1_question"] = "Ou sont les exigences spécifiques en matière de data science / IA mentionnées dans l'appel d'offres ?"
+        if st.button("Quelles sont les exigences spécifiques en matière de data science / IA ?"):
+            st.session_state["p1_question"] = "Quelles sont les exigences spécifiques en matière de data science / IA mentionnées dans l'appel d'offres ?"
 
     with colB:
         st.markdown("### Question")
@@ -799,25 +681,56 @@ with tab2:
 
     with colL:
         st.markdown("### 📧 Emails")
-        st.dataframe(df_emails[["id", "subject", "from", "timestamp"]], use_container_width=True, hide_index=True)
-
-        pick = st.selectbox("Ouvrir un email", df_emails["id"].tolist(), key="p2_pick")
-        row = df_emails[df_emails["id"] == pick].iloc[0]
-        st.text_input("Objet", value=row["subject"], disabled=True)
-        st.text_area("Contenu", value=row["body"], height=240, disabled=True)
-
-        analyze = st.button("Analyser", type="primary")
+        
+        # Mode: démo ou rédiger
+        email_mode = st.radio(
+            "Mode",
+            options=["📋 Emails de démo", "✏️ Rédiger mon email"],
+            horizontal=True,
+            key="p2_email_mode"
+        )
+        
+        if email_mode == "📋 Emails de démo":
+            st.dataframe(df_emails[["id", "subject", "from", "timestamp"]], use_container_width=True, hide_index=True)
+            
+            pick = st.selectbox("Ouvrir un email", df_emails["id"].tolist(), key="p2_pick")
+            row = df_emails[df_emails["id"] == pick].iloc[0]
+            st.text_input("Objet", value=row["subject"], disabled=True)
+            st.text_area("Contenu", value=row["body"], height=240, disabled=True)
+            
+            subject = row["subject"]
+            body = row["body"]
+            email_source = f"Email démo: {pick}"
+        else:
+            subject = st.text_input(
+                "Objet du mail",
+                placeholder="Ex: Mon imprimante ne marche plus",
+                key="p2_custom_subject"
+            )
+            body = st.text_area(
+                "Contenu du mail",
+                placeholder="Décris ton problème ici...",
+                height=240,
+                key="p2_custom_body"
+            )
+            email_source = "Email personnalisé"
+        
+        analyze = st.button("Analyser", type="primary", use_container_width=True)
 
     with colR:
         st.markdown("### Résultat structuré (JSON)")
         if analyze:
+            if not subject.strip() or not body.strip():
+                st.error("Merci de remplir l'objet et le contenu du mail.")
+                st.stop()
+            
             if client is None:
                 st.error("OPENAI_API_KEY manquante : configure-la dans .env (ou export terminal) puis relance.")
                 st.stop()
 
             with st.spinner("Analyse en cours..."):
                 try:
-                    triage = triage_email_llm(subject=row["subject"], body=row["body"])
+                    triage = triage_email_llm(subject=subject, body=body)
                 except Exception as e:
                     st.error(f"Erreur LLM/JSON : {e}")
                     st.stop()
@@ -825,10 +738,8 @@ with tab2:
             st.json(triage.model_dump())
 
             st.session_state["p2_results"].append({
-                "id": row["id"],
-                "subject": row["subject"],
-                "from": row["from"],
-                "timestamp": row["timestamp"],
+                "source": email_source,
+                "subject": subject,
                 "sentiment": triage.sentiment,
                 "urgence": triage.urgence,
                 "categorie": triage.categorie,
@@ -979,7 +890,9 @@ with tab3:
             st.error("Merci de saisir une question.")
             st.stop()
         if df is None:
-            st.error("Données Superstore non disponibles. Place `superstore.xlsx` dans le dossier `data/`.")
+            st.error(f"❌ Données Superstore non disponibles.\n\n"
+                     f"Place `superstore.xlsx` dans le dossier `{DATA_DIR.absolute()}/`.\n\n"
+                     f"Fichier attendu : `{(DATA_DIR / 'superstore.xlsx').absolute()}`")
             st.stop()
 
         with st.spinner("⏳ Interprétation + calcul + graphique..."):
@@ -1012,4 +925,4 @@ with tab3:
         st.info(insight)
 
         with st.expander("🔧 Spec interprétée (debug)", expanded=False):
-            st.json(spec.model_dump() if hasattr(spec, 'model_dump') else spec)
+            st.json(spec)
