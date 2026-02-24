@@ -1,6 +1,7 @@
 streamlit
 pandas
 matplotlib
+plotly
 pydantic
 python-dotenv
 pypdf
