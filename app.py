@@ -236,36 +236,46 @@ superstore_path = DATA_DIR / "superstore.xlsx"
 @st.cache_resource
 def load_superstore_data():
     """Load superstore data, télécharger depuis GitHub si local n'existe pas."""
+    import requests
+    import io
+    
+    df = None
+    
+    # Essai 1: charger depuis le fichier local
     if superstore_path.exists():
         try:
             df = load_superstore_xls(superstore_path)
+            st.write(f"✅ Données chargées (local)")
             print(f"[DEBUG] Loaded from local: {superstore_path}")
+            return df
         except Exception as e:
             print(f"[DEBUG] Error loading local {superstore_path}: {e}")
-            df = None
-    else:
-        # Fallback: télécharger depuis GitHub
-        print(f"[DEBUG] Fichier local introuvable, tentative de téléchargement...")
-        try:
-            url = "https://github.com/Demba09/ai_portfolio/raw/main/data/superstore.xlsx"
-            df = pd.read_excel(url, sheet_name="Orders")
-            df.columns = [c.strip() for c in df.columns]
-            if "Order Date" in df.columns:
-                df["Order Date"] = pd.to_datetime(df["Order Date"])
-            print(f"[DEBUG] Loaded from GitHub: {url}")
-        except Exception as e:
-            print(f"[DEBUG] Error loading from GitHub: {e}")
-            df = None
     
-    # Load returns data si df existe
-    if df is not None:
+    # Essai 2: télécharger depuis GitHub avec requests
+    print(f"[DEBUG] Tentative de téléchargement depuis GitHub...")
+    try:
+        url = "https://raw.githubusercontent.com/Demba09/ai_portfolio/main/data/superstore.xlsx"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        
+        excel_file = io.BytesIO(response.content)
+        xls = pd.ExcelFile(excel_file)
+        
+        if "Orders" not in xls.sheet_names:
+            raise ValueError(f"Sheet 'Orders' not found. Available: {xls.sheet_names}")
+        
+        df = pd.read_excel(excel_file, sheet_name="Orders")
+        df.columns = [c.strip() for c in df.columns]
+        if "Order Date" in df.columns:
+            df["Order Date"] = pd.to_datetime(df["Order Date"])
+        
+        print(f"[DEBUG] Loaded from GitHub: {url}")
+        st.write(f"✅ Données chargées (GitHub)")
+        
+        # Load returns sheet
         try:
-            if superstore_path.exists():
-                returns_df = pd.read_excel(superstore_path, sheet_name="Returns")
-            else:
-                url = "https://github.com/Demba09/ai_portfolio/raw/main/data/superstore.xlsx"
-                returns_df = pd.read_excel(url, sheet_name="Returns")
-            
+            excel_file.seek(0)
+            returns_df = pd.read_excel(excel_file, sheet_name="Returns")
             returns_df.columns = [c.strip() for c in returns_df.columns]
             returned_order_ids = set(returns_df["Order ID"].unique())
             df["Returned"] = df["Order ID"].isin(returned_order_ids).astype(int)
@@ -273,8 +283,12 @@ def load_superstore_data():
         except Exception as e:
             print(f"[DEBUG] Could not load Returns sheet: {e}")
             df["Returned"] = 0
-    
-    return df
+        
+        return df
+    except Exception as e:
+        print(f"[DEBUG] Error loading from GitHub: {e}")
+        st.error(f"❌ Impossible de charger les données: {e}")
+        return None
 
 df = load_superstore_data()
 

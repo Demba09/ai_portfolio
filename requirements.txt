@@ -8,3 +8,4 @@ pypdf
 openai
 numpy
 faiss-cpu
+requests
