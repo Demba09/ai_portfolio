@@ -669,12 +669,12 @@ with tab1:
             pdf_file = st.file_uploader("Upload PDF", type=["pdf"], key="pdf_upload")
 
         st.markdown("### Questions de démo")
-        if st.button("Comment est structurée la réponse à l'appel d'offres ?"):
-            st.session_state["p1_question"] = "Comment est structurée la réponse à l'appel d'offres ? (ex: lots, étapes, critères)"
-        if st.button("Qui a lancé l'appel d'offres ?"):
-            st.session_state["p1_question"] = "Qui a lancé l'appel d'offres"
-        if st.button("Qu'est ce qui est demandé dans l'appel d'offres ?"):
-            st.session_state["p1_question"] = "Qu'est ce que que l'organisme acheteur attend des prestataires ?"
+        if st.button("Comment la réponse à l'appel d'offres doit-elle être structurée ?"):
+            st.session_state["p1_question"] = "Comment la réponse à l'appel d'offres doit-elle être structurée ? (ex : lots, étapes, critères)"
+        if st.button("Quel est l'organisme émetteur de l'appel d'offres ?"):
+            st.session_state["p1_question"] = "Quel est l'organisme émetteur de l'appel d'offres ?"
+        if st.button("Quelles sont les attentes de l'organisme acheteur ?"):
+            st.session_state["p1_question"] = "Quelles sont les attentes de l'organisme acheteur envers les prestataires ?"
 
     with colB:
         st.markdown("### Question")
@@ -884,60 +884,60 @@ with tab3:
         # Les questions sont optimisées pour être bien comprises par le LLM
         question_panels = {
             "📈 Ventes par Région": [
-                "Ventes par région",
-                "Total des ventes par région",
-                "Graphique des ventes par région en barre",
-                "Distribution des ventes par région",
-                "Comparaison des ventes entre régions"
+                "Quelles régions génèrent le plus de ventes ?",
+                "Quel est le total des ventes par région ?",
+                "Montre un graphique des ventes par région",
+                "Comment se répartissent les ventes entre les régions ?",
+                "Quelles régions se comparent le mieux en ventes ?"
             ],
             "💰 Profit par Catégorie": [
-                "Profit par catégorie",
-                "Profit moyen par catégorie",
-                "Quel profit dans chaque catégorie",
-                "Graphique du profit par catégorie",
-                "Distribution des profits par catégorie"
+                "Quelles catégories sont les plus rentables ?",
+                "Quel est le profit moyen par catégorie ?",
+                "Quel profit génère chaque catégorie ?",
+                "Montre le profit par catégorie",
+                "Comment se distribuent les profits par catégorie ?"
             ],
             "📦 Quantités": [
-                "Quantité totale par région",
-                "Nombre de commandes par catégorie",
-                "Quantité moyenne par segment",
-                "Total des articles par mode expédition",
-                "Combien de commandes par région"
+                "Quelle région vend le plus en volume ?",
+                "Combien de commandes par catégorie ?",
+                "Quelle est la quantité moyenne par segment ?",
+                "Quel est le total des articles par mode d'expédition ?",
+                "Combien de commandes sont passées par région ?"
             ],
             "❌ Retours": [
-                "Taux de retour par région",
-                "Retours par catégorie",
-                "Taux de retour par segment",
-                "Pourcentage de retours par région",
-                "Moyenne des retours par state"
+                "Quels sont les taux de retour par région ?",
+                "Quelles catégories ont le plus de retours ?",
+                "Quels segments ont le plus fort taux de retour ?",
+                "Quel est le pourcentage de retours par région ?",
+                "Quelle région a le moins de retours ?"
             ],
             "📊 Évolutions Temporelles": [
-                "Évolution des ventes sur 30 jours",
-                "Évolution du profit sur 7 jours",
-                "Progression des ventes sur 90 jours",
-                "Évolution des commandes sur 1 mois",
-                "Tendance des ventes sur derniers jours"
+                "Comment évoluent les ventes sur les 30 derniers jours ?",
+                "Comment évolue le profit sur les 7 derniers jours ?",
+                "Quelle est la progression des ventes sur 90 jours ?",
+                "Comment évoluent les commandes sur 1 mois ?",
+                "Quelle est la tendance des ventes sur les derniers jours ?"
             ],
             "📍 Par Dimension": [
-                "Ventes par catégorie",
-                "Profit par segment",
-                "Quantité par état",
-                "Ventes par mode expédition",
-                "Retours par sous-catégorie"
+                "Quelles sont les ventes par catégorie ?",
+                "Quel profit par segment ?",
+                "Quelle est la quantité par état ?",
+                "Quelles ventes par mode d'expédition ?",
+                "Quels retours par sous-catégorie ?"
             ],
             "📈 Analyses Avancées": [
-                "Profit maximum par région",
-                "Profit minimum par catégorie",
-                "Moyenne des ventes par segment",
-                "Somme des quantités par state",
-                "Nombre moyen de commandes par région"
+                "Quelle région a le profit maximum ?",
+                "Quelle catégorie a le profit minimum ?",
+                "Quelle est la moyenne des ventes par segment ?",
+                "Quelle est la somme des quantités par état ?",
+                "Combien de commandes en moyenne par région ?"
             ],
             "🔍 Comparaisons": [
-                "Ventes par région en camembert",
-                "Distribution du profit par catégorie",
-                "Ligne d'évolution des ventes",
-                "Graphique linéaire du profit par segment",
-                "Diagramme en barre des retours par région"
+                "Peux-tu afficher les ventes par région en camembert ?",
+                "Comment se distribue le profit par catégorie ?",
+                "Montre la ligne d'évolution des ventes",
+                "Montre le profit par segment en graphique linéaire",
+                "Montre les retours par région en barre"
             ]
         }
         
