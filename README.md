@@ -30,9 +30,10 @@ streamlit run app.py
 Ask a natural-language question about a PDF and get a **cited** answer, with
 the source passages and their page numbers.
 
-The demo document is a real French public-procurement notice published on
-BOAMP, covering a data-management contract. Any other PDF can be uploaded
-instead.
+The demo document is a real contract award notice published on BOAMP, the
+French public-procurement bulletin: a seven-page framework agreement for data
+and AI services at the Institut national du cancer. Any other PDF can be
+uploaded instead.
 
 **Pipeline**
 
@@ -52,6 +53,14 @@ no answer at all.
 
 The passages used are displayed below the answer, so every claim can be
 checked against its source.
+
+The demo questions are split in two on purpose. Four have their answer in the
+document: who won the contract and for how much, the award criteria and their
+weighting, the framework agreement's duration and renewals, the analysis tools
+in use. A fifth asks how a bid should be structured, which this notice does not
+say: it only points at the consultation rules, a separate document that is not
+attached. That question is there to show the refusal working, not to show it
+failing.
 
 ---
 

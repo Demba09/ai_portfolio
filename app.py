@@ -680,8 +680,12 @@ tab1, tab2, tab3 = st.tabs([
 
 # ---------- Tab 1 ----------
 with tab1:
-    st.subheader("Assistant Appels d'Offres (PDF)")
-    st.caption("Démo : PDF d'un appel d'offres ou import d'un PDF → Q/R factuelle + citations.")
+    st.subheader("Assistant Marchés Publics (PDF)")
+    st.caption(
+        "Démo : un avis de marché public, ou votre propre PDF "
+        "→ réponse factuelle, citée page par page, et refus explicite "
+        "quand l'information n'est pas dans le document."
+    )
 
     pdf_path = DATA_DIR / "inca_boamp.pdf"
 
@@ -699,7 +703,7 @@ with tab1:
             if st.button("✅ Utiliser le PDF de démo", use_container_width=True):
                 st.session_state["p1_use_demo"] = True
                 if not st.session_state.get("p1_question"):
-                    st.session_state["p1_question"] = "Quelles sont les attentes en data science / IA ?"
+                    st.session_state["p1_question"] = "Quel est l'objet du marché et quelles prestations couvre-t-il ?"
 
         with c2:
             if st.button("📄 Importer mon PDF", use_container_width=True):
@@ -710,7 +714,10 @@ with tab1:
         pdf_file = None
         if use_demo:
             if pdf_path.exists():
-                st.success("Mode démo activé (Appel d'offre gestion de données).")
+                st.success(
+                    "Mode démo : avis d'attribution BOAMP n° 25-15684, "
+                    "Institut national du cancer, accord-cadre data et IA (7 pages)."
+                )
             else:
                 st.warning("PDF de démo introuvable : place `inca_boamp.pdf` dans `data/`.")
         else:
@@ -718,19 +725,30 @@ with tab1:
             pdf_file = st.file_uploader("Upload PDF", type=["pdf"], key="pdf_upload")
 
         st.markdown("### Questions de démo")
+        st.caption("La réponse est dans le document :")
+        if st.button("Qui a remporté le marché, et pour quel montant ?"):
+            st.session_state["p1_question"] = "Qui a remporté le marché, et pour quel montant ?"
+        if st.button("Quels sont les critères d'attribution et leur pondération ?"):
+            st.session_state["p1_question"] = "Quels sont les critères d'attribution et leur pondération ?"
+        if st.button("Quelle est la durée de l'accord-cadre et ses reconductions ?"):
+            st.session_state["p1_question"] = "Quelle est la durée de l'accord-cadre et combien de fois est-il reconductible ?"
+        if st.button("Quels outils d'analyse l'Institut utilise-t-il ?"):
+            st.session_state["p1_question"] = "Quels outils d'analyse et quelles technologies l'Institut utilise-t-il ?"
+
+        st.caption(
+            "La réponse **n'est pas** dans le document. L'assistant doit le dire "
+            "au lieu de l'inventer : les modalités de réponse figurent dans le "
+            "Règlement de la consultation, qui n'est pas joint à cet avis."
+        )
         if st.button("Comment la réponse à l'appel d'offres doit-elle être structurée ?"):
             st.session_state["p1_question"] = "Comment la réponse à l'appel d'offres doit-elle être structurée ? (ex : lots, étapes, critères)"
-        if st.button("Quel est l'organisme émetteur de l'appel d'offres ?"):
-            st.session_state["p1_question"] = "Quel est l'organisme émetteur de l'appel d'offres ?"
-        if st.button("Quelles sont les attentes de l'organisme acheteur ?"):
-            st.session_state["p1_question"] = "Quelles sont les attentes de l'organisme acheteur envers les prestataires ?"
 
     with colB:
         st.markdown("### Question")
         question = st.text_input(
             "Pose une question",
             key="p1_question",
-            placeholder="Ex: Quelles sont les attentes en data science / IA ?"
+            placeholder="Ex : Qui a remporté le marché, et pour quel montant ?"
         )
 
         # Choix du PDF : démo ou upload
