@@ -185,6 +185,9 @@ def retrieve(index: faiss.IndexFlatIP, chunks: list[dict], question: str, top_k:
     return results
 
 def answer_with_citations(question: str, retrieved: list[dict]) -> Tuple[str, list[dict]]:
+    if client is None:
+        raise RuntimeError("OpenAI client not initialized. Set OPENAI_API_KEY.")
+
     context_blocks = []
     for r in retrieved:
         context_blocks.append(
@@ -243,8 +246,10 @@ def load_superstore_xls(path: Path) -> pd.DataFrame:
 
     return df
 
-# ---------- Tab 3 Data Loading & LLM Utils ----------
-# Load Superstore data for Tab 3
+# ---------- Tab 3 Data Loading ----------
+# Source primaire : les CSV versionnes dans data/. Le classeur Excel n'est plus
+# fourni (doublon de 6 Mo des memes donnees) : le chemin ci-dessous reste un
+# repli optionnel pour qui depose son propre superstore.xlsx dans data/.
 superstore_path = DATA_DIR / "superstore.xlsx"
 superstore_orders_csv = DATA_DIR / "superstore_orders.csv"
 superstore_returns_csv = DATA_DIR / "superstore_returns.csv"
@@ -330,8 +335,36 @@ df = load_superstore_data()
 if df is not None:
     print(f"[DEBUG] Successfully loaded Superstore: {df.shape[0]} rows, {df.shape[1]} cols")
 
-def llm_to_spec_fr(question: str) -> dict:
-    """Convert French question to a spec dict using extensive pattern matching."""
+# Alias de colonnes. Le jeu Superstore circule sous deux nommages selon
+# l'export : "State" ou "State/Province", "Country" ou "Country/Region".
+# On résout le nom demandé contre les colonnes réellement présentes, au lieu
+# de supposer l'un des deux et de lever un KeyError sur l'autre.
+COLUMN_ALIASES = {
+    "State": ["State", "State/Province"],
+    "Country": ["Country", "Country/Region"],
+    "Sub-Category": ["Sub-Category", "SubCategory"],
+}
+
+
+def resolve_column(data: pd.DataFrame, name: str, fallback: str | None = None) -> str | None:
+    """Nom de colonne réellement présent dans `data`, ou `fallback`, ou None."""
+    for candidate in COLUMN_ALIASES.get(name, [name]):
+        if candidate in data.columns:
+            return candidate
+    if fallback is not None and fallback in data.columns:
+        return fallback
+    return None
+
+
+def question_to_spec(question: str) -> dict:
+    """Traduit une question en français en spécification d'analyse.
+
+    Correspondance de mots-clés déterministe, sans appel à un modèle de
+    langage : le vocabulaire métier du jeu de données est fermé, donc une
+    règle explicite est instantanée, gratuite et reproductible. Une
+    formulation non reconnue retombe sur les valeurs par défaut
+    (ventes par région).
+    """
     question_lower = question.lower()
     
     # Default values
@@ -397,7 +430,8 @@ def llm_to_spec_fr(question: str) -> dict:
             spec["column"] = "Sales"  # Default
         
         # ===== GROUPING DIMENSION DETECTION =====
-        region_keywords = ["région", "region", "régions", "regions", "pays", "country", "zone", "area", "territoire", "territory"]
+        region_keywords = ["région", "region", "régions", "regions", "zone", "area", "territoire", "territory"]
+        country_keywords = ["pays", "country", "nation", "nations"]
         category_keywords = ["catégorie", "category", "categorie", "categories", "type", "genre", "classe", "class"]
         subcategory_keywords = ["sous-catégorie", "sous catégorie", "subcategory", "sub-category", "sous-cat", "souscatégorie"]
         segment_keywords = ["segment", "segments", "clientèle", "clientele", "population", "groupe", "group", "partie"]
@@ -417,6 +451,8 @@ def llm_to_spec_fr(question: str) -> dict:
             spec["groupby"] = "City"
         elif any(kw in question_lower for kw in shipmode_keywords):
             spec["groupby"] = "Ship Mode"
+        elif any(kw in question_lower for kw in country_keywords):
+            spec["groupby"] = "Country"
         elif any(kw in question_lower for kw in region_keywords):
             spec["groupby"] = "Region"
         else:
@@ -491,6 +527,19 @@ def run_spec(data: pd.DataFrame, spec: dict) -> Tuple:
     
     # Handle timeseries (date-based) queries
     working_data = data.copy()
+
+    # Les noms issus de la question sont canoniques ; on les mappe sur les
+    # colonnes réelles avant tout groupby, sinon un export au nommage
+    # différent fait planter la démo sur un KeyError.
+    resolved_groupby = resolve_column(working_data, groupby, fallback="Region")
+    resolved_column = resolve_column(working_data, column, fallback="Sales")
+    if resolved_groupby is None or resolved_column is None:
+        raise ValueError(
+            f"Colonne introuvable dans les données : "
+            f"regroupement={groupby!r}, métrique={column!r}. "
+            f"Colonnes disponibles : {', '.join(map(str, data.columns))}"
+        )
+    groupby, column = resolved_groupby, resolved_column
     if is_timeseries and "Order Date" in working_data.columns:
         # Ensure Order Date is datetime
         working_data["Order Date"] = pd.to_datetime(working_data["Order Date"], errors="coerce")
@@ -619,7 +668,7 @@ def run_spec(data: pd.DataFrame, spec: dict) -> Tuple:
     return fig, insight
 
 # ---------- Streamlit page config ----------
-st.set_page_config(page_title="Portfolio IA — Nexton", layout="wide")
+st.set_page_config(page_title="Portfolio IA", layout="wide")
 st.title("Portfolio IA — 3 mini-projets")
 
 tab1, tab2, tab3 = st.tabs([
@@ -840,7 +889,7 @@ with tab3:
     # Vérifier que les données sont disponibles
     if df is None:
         st.error("❌ Données Superstore non disponibles")
-        st.info("Pour utiliser cette tab, place le fichier `superstore.xlsx` dans le dossier `data/` de ton projet.")
+        st.info("Pour utiliser cet onglet, place `superstore_orders.csv` dans le dossier `data/` du projet.")
         st.stop()
     
     st.markdown("#### ✍️ Posez votre question")
@@ -972,13 +1021,13 @@ with tab3:
             st.stop()
         if df is None:
             st.error(f"❌ Données Superstore non disponibles.\n\n"
-                     f"Place `superstore.xlsx` dans le dossier `{DATA_DIR.absolute()}/`.\n\n"
-                     f"Fichier attendu : `{(DATA_DIR / 'superstore.xlsx').absolute()}`")
+                     f"Place `superstore_orders.csv` dans le dossier `{DATA_DIR.absolute()}/`.\n\n"
+                     f"Fichier attendu : `{(DATA_DIR / 'superstore_orders.csv').absolute()}`")
             st.stop()
 
         with st.spinner("⏳ Interprétation + calcul + graphique..."):
             try:
-                spec = llm_to_spec_fr(question)
+                spec = question_to_spec(question)
                 
                 # Appliquer le choix du graphique de l'utilisateur
                 if chart_type_choice == "Barre":

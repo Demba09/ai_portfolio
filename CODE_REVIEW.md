@@ -1,157 +1,125 @@
-# Revue du Code - Portfolio IA
+# Revue de code
 
-## 📊 Résumé Général
-- **Lignes de code** : ~1017
-- **Composants** : 3 tabs Streamlit (RAG, Triage Email, Analytics)
-- **État global** : Bon, avec quelques bugs et optimisations possibles
+Revue interne de `app.py`, avec l'état de chaque point relevé. Ce document
+sert de suivi : il enregistre ce qui a été corrigé et ce qui reste ouvert,
+plutôt que de lister des défauts sans suite.
 
----
-
-## 🔴 Problèmes Critiques
-
-### 1. **Duplication de logique dans `run_spec()` (lignes 560-620)**
-```python
-# Problème: le code crée DEUX fois les graphiques bar/line/pie
-# - Première fois: lignes 560-575 (if/elif/elif)
-# - Deuxième fois: lignes 580-615 (else block avec duplication)
-```
-**Impact** : Code dupliqué, difficile à maintenir
-**Fix** : Réfactoriser en une seule section
-
-### 2. **JSON malformé potentiel dans `triage_email_llm()` (ligne 75)**
-```python
-data = json.loads(raw)  # Peut échouer si LLM retourne du texte extra
-```
-**Impact** : Crash si le LLM ne produit pas du JSON pur
-**Fix** : Ajouter extraction JSON robuste avec regex
-
-### 3. **Pas de vérification du client OpenAI dans les fonction RAG**
-```python
-def embed_texts(texts: list[str]) -> np.ndarray:
-    resp = client.embeddings.create(...)  # ← client peut être None
-```
-**Impact** : Crash à l'exécution si API key manquante
-**Fix** : Vérifier `client is not None` avant d'appeler
-
-### 4. **Import redondant de `Tuple` (ligne 10)**
-```python
-from typing import Tuple
-# Ensuite: Tuple["faiss.IndexFlatIP", ...]  ← utilisation cohérente, OK
-```
-Pas critique mais noté.
+Périmètre : un fichier, environ mille lignes, trois onglets Streamlit.
 
 ---
 
-## 🟡 Problèmes Majeurs
+## Corrigé
 
-### 1. **Duplicate Code dans `run_spec()` - LIGNE 560-615**
-```python
-# Vous créez les graphiques 2 fois!
-# Première section (560-575): if/elif pour bar/line
-# Puis else block (580-615): refait bar/line/pie
+### Duplication de la construction des graphiques
 
-# Au lieu de ça, on devrait avoir:
-if chart_type == "bar":
-    fig = px.bar(...)
-elif chart_type == "line":
-    fig = px.line(...)
-elif chart_type == "pie" and num_groups <= 6:
-    fig = px.pie(...)
-else:
-    fig = px.bar(...)  # fallback
-```
+`run_spec()` créait les figures barre, ligne et camembert deux fois, dans
+deux blocs successifs. La seconde série écrasait la première.
 
-### 2. **Détection de colonne dans `llm_to_spec_fr()` - REDONDANCE**
-```python
-# Lignes 380-395: Détection de métrique (non-timeseries)
-# Lignes 420-430: MÊME détection répétée pour timeseries+non-timeseries
-```
-**Impact** : Réduire duplication code
+Remplacé par une chaîne conditionnelle unique : camembert si le type est
+demandé et que le nombre de groupes reste lisible, ligne si demandée,
+barre par défaut.
 
-### 3. **Gestion d'erreur faible dans `load_superstore_data()`**
-```python
-# Pas de timeout robuste pour GitHub
-# Pas de retry logic
-# Pas d'indication à l'utilisateur du chargement en cours
-```
+### JSON malformé renvoyé par le modèle
 
-### 4. **Keyword lists dans `llm_to_spec_fr()` non-optimisées**
-```python
-# 15+ listes de keywords créées à chaque appel
-# Mieux: les définir une seule fois comme constantes en haut du fichier
-```
+`triage_email_llm()` passait la réponse brute à `json.loads()`. Tout texte
+d'accompagnement autour du JSON provoquait une exception.
 
----
+Le JSON est maintenant isolé par expression régulière avant analyse, et
+l'échec éventuel remonte un message explicite plutôt qu'une trace brute.
+La validation Pydantic reste la garantie finale sur les valeurs.
 
-## 🟢 Problèmes Mineurs / Optimisations
+### Client OpenAI absent
 
-### 1. **Message d'erreur utilisateur (Tab 1, ligne ~760)**
-```python
-st.error("Aucun PDF disponible (démo introuvable ou upload manquant).")
-st.stop()
-```
-**Bon** : Mais peut être plus spécifique
+Les fonctions appelant l'API partaient du principe que le client existait.
+Sans clé configurée, l'erreur survenait au milieu d'un traitement.
 
-### 2. **Cache Strategy**
-- ✅ Tab 1: Pas de cache (correct, PDFs varient)
-- ✅ Tab 2: Cache globale (emails_demo.jsonl statique)
-- ⚠️ Tab 3: `@st.cache_resource` pour `load_superstore_data()` (OK mais longue durée)
+`embed_texts()`, `answer_with_citations()` et `triage_email_llm()` vérifient
+désormais le client et lèvent une erreur nommée. Les onglets contrôlent
+également la clé avant de lancer un traitement, ce qui donne un message
+lisible à l'utilisateur.
 
-### 3. **Pas de validation des données dans `run_spec()`**
-```python
-# Pas de check si la colonne existe réellement dans le dataframe
-# Pas de check si le groupby existe
-# Peut causer KeyError à l'exécution
-```
+### Colonne introuvable selon l'export des données
 
-### 4. **Type hints incomplets**
-```python
-def run_spec(data: pd.DataFrame, spec: dict) -> Tuple:  # Tuple de quoi?
-# Mieux: -> Tuple[go.Figure, str]:
-```
+Une question portant sur un état ou une province produisait un
+regroupement sur `State`, alors que le CSV livré nomme cette colonne
+`State/Province`. La démonstration s'interrompait sur un `KeyError`.
+
+Une table d'alias et une fonction de résolution rapprochent maintenant le
+nom canonique issu de la question des colonnes réellement présentes. Les
+deux nommages du jeu Superstore fonctionnent. Si aucune correspondance
+n'existe, `run_spec()` lève une erreur qui énumère les colonnes
+disponibles, au lieu de laisser remonter un `KeyError` nu.
+
+### Pays et région confondus
+
+Les mots « pays » et « country » retombaient sur la dimension `Region`,
+qui désigne une zone interne au pays. Ils ont désormais leur propre
+dimension.
+
+### Nom de fonction trompeur
+
+`llm_to_spec_fr()` ne faisait aucun appel à un modèle de langage. Renommée
+`question_to_spec()`, avec une docstring qui explique le choix d'une
+correspondance par mots-clés : vocabulaire fermé, résultat déterministe,
+aucun coût d'appel.
+
+### Doublons de données
+
+Le jeu Superstore était versionné en trois exemplaires, tableur `.xls`,
+tableur `.xlsx` et CSV, pour environ neuf mégaoctets. Le code lit le CSV en
+priorité. Les deux tableurs ont été retirés du dépôt. Le chemin de lecture
+tableur reste en place comme repli optionnel, pour qui dépose son propre
+fichier dans `data/`.
 
 ---
 
-## 📋 Recommandations
+## Ouvert, et assumé
 
-### Priority 1 (Urgent)
-1. ✅ **Fixer la duplication dans `run_spec()`** - Réfactoriser les graphiques
-2. ✅ **Vérifier client OpenAI** dans `embed_texts()`, `triage_email_llm()`, `answer_with_citations()`
-3. ✅ **Robustifier JSON parsing** dans `triage_email_llm()` avec regex fallback
+Ces points sont connus. Ils ne sont pas traités parce que le projet est un
+démonstrateur, et que les corriger n'améliorerait pas ce qu'il démontre.
 
-### Priority 2 (Important)
-4. **Extraire keyword lists** en constantes globales
-5. **Supprimer duplication** détection métrique en Tab 3
-6. **Ajouter validation** colonnes/groupby dans `run_spec()`
-7. **Meilleur type hints** (Tuple[Figure, str] etc.)
+### Détection de métrique écrite deux fois
 
-### Priority 3 (Nice-to-have)
-8. **Ajouter spinner** durant chargement Superstore GitHub
-9. **Ajouter retry logic** pour téléchargements GitHub
-10. **Meilleur logging** structured (logger.debug vs print)
-11. **Docstrings** pour chaque fonction
+`question_to_spec()` déduit la métrique une première fois dans la branche
+non temporelle, puis une seconde fois pour les deux branches. La seconde
+passe donne le résultat final. Sans effet sur le comportement, mais deux
+endroits à modifier pour un seul changement.
+
+### Listes de mots-clés reconstruites à chaque appel
+
+Une quinzaine de listes sont allouées à chaque question. Le coût est
+négligeable à cette échelle. Elles auraient leur place en constantes de
+module.
+
+### Pas de temporisation ni de reprise sur le téléchargement distant
+
+Le troisième repli de `load_superstore_data()` télécharge les CSV depuis
+GitHub sans délai maximal ni nouvelle tentative. Il ne sert que si les
+fichiers locaux ont disparu.
+
+### Annotations de type partielles
+
+`run_spec()` déclare `Tuple` sans préciser son contenu, qui est une figure
+Plotly et une chaîne de commentaire.
+
+### Aucun test automatisé
+
+Le projet n'a pas de suite de tests. Les corrections ci-dessus ont été
+vérifiées manuellement, en rejouant chaque type de question et en
+contrôlant qu'une figure est produite.
+
+### Journalisation par `print`
+
+Les traces de chargement passent par `print` et non par le module
+`logging`, donc sans niveau ni filtrage.
 
 ---
 
-## 📊 Qualité du Code
+## Vérification après corrections
 
-| Aspect | Note | Commentaire |
-|--------|------|------------|
-| Fonctionnalité | 8/10 | Tout fonctionne, quelques edge cases |
-| Maintenabilité | 6/10 | Code dupliqué, pas de constantes |
-| Performance | 8/10 | Cache stratégique, bon |
-| Erreurs | 5/10 | Gestion faible en certains points |
-| Documentation | 4/10 | Peu de docstrings/comments |
-| Type Safety | 6/10 | Type hints partiels |
-
-**Score global : 6.2/10** (Acceptable mais à améliorer)
-
----
-
-## 🎯 Prochaines Étapes
-
-1. Fixer duplication dans `run_spec()`
-2. Vérifier les clients OpenAI
-3. Refactoriser keyword detection
-4. Ajouter docstrings
-5. Améliorer error handling
+Treize formulations couvrant toutes les dimensions et toutes les
+agrégations reconnues ont été rejouées, y compris une question
+volontairement incompréhensible pour contrôler le repli. Les treize
+produisent un graphique. Les deux nommages de colonnes du jeu Superstore
+ont été testés. Le chargement depuis le CSV donne dix mille cent
+quatre-vingt-quatorze lignes et la colonne de retours attendue.
