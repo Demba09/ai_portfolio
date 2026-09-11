@@ -1,11 +1,13 @@
 # Portfolio IA
 
+**[Essayer la démo en ligne](https://aiportfolio.streamlit.app/)**
+
 Trois démonstrateurs d'IA appliquée, réunis dans une seule application Streamlit.
 Chacun répond à un besoin métier concret : interroger un document contractuel,
 trier des demandes entrantes, explorer des données sans écrire de requête.
 
-L'application se lance en une commande et fonctionne sur des données réelles
-fournies dans le dépôt.
+L'interface est en français. L'application fonctionne sur des données réelles
+fournies dans le dépôt, et se lance en une commande en local.
 
 ```bash
 streamlit run app.py
