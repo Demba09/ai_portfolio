@@ -1,13 +1,13 @@
-# Portfolio IA
+# AI Portfolio
 
-**[Essayer la démo en ligne](https://aiportfolio.streamlit.app/)**
+**[Try the live demo](https://aiportfolio.streamlit.app/)**
 
-Trois démonstrateurs d'IA appliquée, réunis dans une seule application Streamlit.
-Chacun répond à un besoin métier concret : interroger un document contractuel,
-trier des demandes entrantes, explorer des données sans écrire de requête.
+Three applied-AI demonstrators in a single Streamlit app. Each one answers a
+concrete business need: query a contractual document, triage inbound requests,
+explore data without writing a query.
 
-L'interface est en français. L'application fonctionne sur des données réelles
-fournies dans le dépôt, et se lance en une commande en local.
+The user interface is in French. The app runs on real data shipped with the
+repository, and starts locally with one command.
 
 ```bash
 streamlit run app.py
@@ -15,97 +15,98 @@ streamlit run app.py
 
 ---
 
-## Les trois démos
+## The three demos
 
-| Onglet | Problème traité | Cœur technique |
+| Tab | Problem it addresses | Technical core |
 |---|---|---|
-| **1. Analyse documentaire (RAG)** | Retrouver une information précise dans un appel d'offres de plusieurs pages | Embeddings + FAISS + GPT-4o, réponses sourcées |
-| **2. Automatisation du support** | Qualifier un email entrant sans lecture humaine | GPT-4o + schéma Pydantic validé |
-| **3. Self-service analytics** | Obtenir un graphique à partir d'une question en français | Règles de correspondance + pandas + Plotly |
+| **1. Document analysis (RAG)** | Find a specific fact inside a multi-page tender document | Embeddings + FAISS + GPT-4o, sourced answers |
+| **2. Support automation** | Qualify an inbound email without a human reading it | GPT-4o + validated Pydantic schema |
+| **3. Self-service analytics** | Turn a plain-language question into a chart | Keyword rules + pandas + Plotly |
 
 ---
 
-### 1. Analyse documentaire stratégique (RAG)
+### 1. Document analysis (RAG)
 
-Pose une question en langage naturel sur un PDF et obtient une réponse **citée**,
-avec les extraits sources et leur numéro de page.
+Ask a natural-language question about a PDF and get a **cited** answer, with
+the source passages and their page numbers.
 
-Le document de démonstration est un avis de marché public réel publié au BOAMP,
-portant sur une prestation de gestion de données. Tout autre PDF peut être
-chargé à la place.
+The demo document is a real French public-procurement notice published on
+BOAMP, covering a data-management contract. Any other PDF can be uploaded
+instead.
 
-**Chaîne de traitement**
+**Pipeline**
 
-1. Extraction du texte page par page avec `pypdf`
-2. Découpage en segments de 1200 caractères avec un recouvrement de 200
-3. Vectorisation via `text-embedding-3-small`, vecteurs normalisés
-4. Indexation dans FAISS en produit scalaire, équivalent à une similarité cosinus
-5. Récupération des cinq segments les plus proches de la question
-6. Génération de la réponse par GPT-4o, contrainte aux seuls extraits fournis
+1. Page-by-page text extraction with `pypdf`
+2. Chunking into 1200-character segments with a 200-character overlap
+3. Vectorisation with `text-embedding-3-small`, normalised vectors
+4. FAISS inner-product index, equivalent to cosine similarity on unit vectors
+5. Retrieval of the five passages closest to the question
+6. Answer generation by GPT-4o, constrained to the retrieved passages only
 
-**Le point important : le modèle a le droit de ne pas répondre.**
-L'instruction système lui impose de répondre uniquement à partir des extraits
-récupérés, et de retourner explicitement « Information non trouvée dans le
-document fourni » lorsque la réponse n'y figure pas. Chaque affirmation
-factuelle porte une citation de la forme `[Cxx]`, rattachée à une page.
-Sur un document contractuel ou réglementaire, une réponse inventée coûte
-plus cher qu'une absence de réponse.
+**The part that matters: the model is allowed not to answer.** The system
+prompt requires it to answer strictly from the retrieved passages, and to
+return an explicit "information not found in the document" when the answer is
+absent. Every factual statement carries a `[Cxx]` citation tied to a page.
+On a contractual or regulatory document, an invented answer costs more than
+no answer at all.
 
-Les extraits utilisés sont affichés sous la réponse, ce qui permet de
-vérifier chaque affirmation à la source.
+The passages used are displayed below the answer, so every claim can be
+checked against its source.
 
 ---
 
-### 2. Automatisation du support (extraction structurée)
+### 2. Support automation (structured extraction)
 
-Transforme un email de support en enregistrement exploitable, prêt à être
-routé ou priorisé.
+Turns a support email into a record that can be routed or prioritised.
 
-Le modèle renvoie un JSON validé par un schéma Pydantic :
+The model returns JSON validated against a Pydantic schema:
 
-| Champ | Type | Contrainte |
+| Field | Type | Allowed values |
 |---|---|---|
-| `sentiment` | énuméré | Très en colère, En colère, Neutre, Satisfait |
-| `urgence` | entier | 1 à 5 |
-| `categorie` | énuméré | Matériel, Logiciel, Accès / Identité, Réseau, Sécurité, Demande de service, Autre |
-| `action_immediate` | texte | non vide |
+| `sentiment` | enum | `Très en colère`, `En colère`, `Neutre`, `Satisfait` |
+| `urgence` | integer | 1 to 5 |
+| `categorie` | enum | `Matériel`, `Logiciel`, `Accès / Identité`, `Réseau`, `Sécurité`, `Demande de service`, `Autre` |
+| `action_immediate` | string | non-empty |
 
-Deux garde-fous encadrent la sortie du modèle. Une extraction par expression
-régulière isole le JSON lorsque le modèle l'entoure de texte. La validation
-Pydantic rejette ensuite toute valeur hors énumération ou hors bornes, plutôt
-que de laisser passer un champ approximatif en aval.
+Two guardrails sit around the model output. A regular expression isolates the
+JSON when the model wraps it in prose. Pydantic validation then rejects any
+value outside the enum or outside the bounds, rather than letting an
+approximate field flow downstream.
 
-Les emails analysés s'accumulent dans un tableau trié par urgence
-décroissante. Cinq emails de démonstration sont fournis, et un mode libre
-permet de saisir son propre message.
+Field names and enum values are in French, matching the interface.
+
+Analysed emails accumulate in a table sorted by descending urgency. Five demo
+emails ship with the repo, and a free-text mode accepts your own message.
 
 ---
 
 ### 3. Self-service analytics
 
-Convertit une question en français en un graphique interactif sur le jeu de
-données Superstore, environ dix mille lignes de commandes.
+Converts a French question into an interactive chart over the Superstore
+dataset, roughly ten thousand order lines.
 
-La question est traduite en spécification d'analyse : dimension de
-regroupement, métrique, fonction d'agrégation, type de graphique, fenêtre
-temporelle. Cette spécification est ensuite exécutée avec pandas et rendue
-avec Plotly.
+The question is translated into an analysis spec: grouping dimension, metric,
+aggregation function, chart type, time window. That spec is then executed with
+pandas and rendered with Plotly.
 
-**Cette traduction repose sur des règles de correspondance de mots-clés, pas
-sur un appel à un modèle de langage.** Le choix est assumé : sur un vocabulaire
-métier fermé, une règle explicite est déterministe, instantanée et gratuite.
-La contrepartie est qu'une formulation inattendue retombe sur les valeurs par
-défaut, ventes par région. Les dimensions reconnues sont la région, l'état, la
-ville, la catégorie, la sous-catégorie, le segment et le mode d'expédition.
-Les métriques sont les ventes, le profit, la quantité et le taux de retour.
+**This translation uses keyword matching, not a language-model call.** The
+choice is deliberate: over a closed business vocabulary, an explicit rule is
+deterministic, instant and free. The trade-off is that an unexpected phrasing
+falls back to the defaults, sales by region. Recognised dimensions are region,
+country, state, city, category, sub-category, segment and ship mode. Metrics
+are sales, profit, quantity and return rate.
 
-Cet onglet est le seul à fonctionner sans clé API.
+Column names are resolved against the columns actually present, so both
+Superstore namings work (`State` or `State/Province`, `Country` or
+`Country/Region`).
+
+This is the only tab that works without an API key.
 
 ---
 
-## Installation
+## Setup
 
-Python 3.10 ou supérieur.
+Python 3.10 or later.
 
 ```bash
 git clone https://github.com/Demba09/ai_portfolio
@@ -114,23 +115,22 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Les onglets 1 et 2 appellent l'API OpenAI. Renseignez une clé dans un fichier
-`.env` à la racine :
+Tabs 1 and 2 call the OpenAI API. Put a key in a `.env` file at the root:
 
 ```
 OPENAI_API_KEY=sk-...
 ```
 
-Ce fichier est exclu du suivi Git.
+That file is git-ignored.
 
-Puis :
+Then:
 
 ```bash
 streamlit run app.py
 ```
 
-Sur macOS, `faiss-cpu` s'installe parfois mal via pip. L'application détecte
-son absence et signale le problème au lieu de planter. Solution de repli :
+On macOS, `faiss-cpu` sometimes fails to install through pip. The app detects
+its absence and reports it instead of crashing. Fallback:
 
 ```bash
 conda install -c conda-forge faiss-cpu
@@ -138,45 +138,41 @@ conda install -c conda-forge faiss-cpu
 
 ---
 
-## Structure du dépôt
+## Repository layout
 
 ```
-app.py                        application Streamlit, les trois onglets
-requirements.txt              dépendances
+app.py                        Streamlit app, all three tabs
+requirements.txt              dependencies
 data/
-  inca_boamp.pdf              avis de marché public, document de démo du RAG
-  emails_demo.jsonl           cinq emails de support
-  superstore_orders.csv       commandes, environ 10 000 lignes
-  superstore_returns.csv      retours, utilisés pour le taux de retour
-CODE_REVIEW.md                revue de code interne et suivi des correctifs
+  inca_boamp.pdf              public tender notice, the RAG demo document
+  emails_demo.jsonl           five support emails
+  superstore_orders.csv       orders, about 10,000 rows
+  superstore_returns.csv      returns, used for the return-rate metric
+CODE_REVIEW.md                internal code review and fix tracking
 ```
 
 ---
 
-## Limites connues
+## Known limitations
 
-Ces démonstrateurs servent à montrer une approche, pas à être exploités en
-l'état. Les écarts assumés :
+These are demonstrators meant to show an approach, not systems to run as-is.
+The gaps, stated plainly:
 
-- **Le RAG réindexe le document à chaque question.** L'index FAISS n'est pas
-  mis en cache entre deux appels. C'est acceptable sur un PDF de démonstration,
-  pas sur un corpus volumineux, où l'indexation devrait être découplée de
-  l'interrogation et persistée.
-- **Pas d'évaluation chiffrée de la récupération.** La qualité des réponses a
-  été vérifiée manuellement sur le document de démonstration. Aucun jeu de test
-  question-réponse ni mesure de rappel n'accompagne le projet.
-- **Le découpage est fait à taille fixe**, sans tenir compte de la structure du
-  document. Sur des textes très structurés, un découpage guidé par les sections
-  donnerait de meilleurs résultats.
-- **L'état est stocké en session Streamlit.** Rien ne persiste après la
-  fermeture de l'onglet du navigateur.
-- **Aucun test automatisé.**
+- **The RAG re-indexes the document on every question.** The FAISS index is not
+  cached between calls. Fine for a demo PDF, wrong for a large corpus, where
+  indexing should be decoupled from querying and persisted.
+- **No measured retrieval evaluation.** Answer quality was checked by hand on
+  the demo document. There is no question-answer test set and no recall metric.
+- **Fixed-size chunking**, blind to document structure. On heavily structured
+  text, section-aware chunking would retrieve better.
+- **State lives in the Streamlit session.** Nothing survives closing the tab.
+- **No automated tests.**
 
 ---
 
-## Note sur la confidentialité
+## Privacy note
 
-Toutes les données du dépôt sont publiques ou synthétiques. Le PDF provient
-d'un avis de marché publié au BOAMP, les emails sont fictifs, et Superstore
-est un jeu de données de démonstration largement diffusé. Aucune donnée
-client ni information personnelle réelle n'est présente.
+All data in this repository is public or synthetic. The PDF is a procurement
+notice published on BOAMP, the emails are fictional, and Superstore is a widely
+circulated demo dataset. No real client data and no personal information is
+present.
